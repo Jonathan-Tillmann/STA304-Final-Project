@@ -16,7 +16,9 @@ These can all be found in the directory outputs
 
 ## Scripts
 Scripts contain R scripts that take inputs and outputs and produce outputs. These are: 
+
 -Cleaning Script.R
+
 -Graphs and Figures.R
 
 Use the Cleaning Script to produce the dataset used for the figures and models
