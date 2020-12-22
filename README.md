@@ -8,11 +8,11 @@ Inputs contain data that are unchanged from their original source. I used one da
 
 Save the dataset in a directory input/data/~
 
-## Model and CSV files
+## Model
 Outputs contain data that are modified from the input data, the report, and supporting material.
-These can all be found in the directory outputs
+The models can all be found in the directory outputs
 - Model: containing the Frequentist Logistic models made with the cleaned data
-- Various csv files used in the RMarkdown file
+
 
 ## Scripts
 Scripts contain R scripts that take inputs and outputs and produce outputs. These are: 
