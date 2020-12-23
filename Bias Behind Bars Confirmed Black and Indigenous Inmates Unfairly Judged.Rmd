@@ -1,0 +1,222 @@
+---
+title: "Bias Behind Bars Confirmed: Black and Indigenous Inmates Unfairly Judged"
+author: "Jonathan Tillmann"
+date: "12/22/2020"
+output: pdf_document
+indent: true
+header-includes:
+ \usepackage{float}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rprojroot)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+#Setup library
+library(aod)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(jtools)
+library(knitr)
+library(png)
+```
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.pos = 'H', render = 'normal_print', echo = FALSE, warning=FALSE)
+options(kableExtra.auto_format
+= FALSE)
+
+```
+
+
+```{r}
+#Download the dataset and run the cleaning script to get the datasets
+The_Globe_and_Mail_CSC_OMS_2012_2018_20201022235635_clean <- read.csv("The_Globe_and_Mail_CSC_OMS_2012_2018_20201022235635_clean.csv")
+Male_inmates <- read.csv("Male_inmates.csv")
+Female_inmates <- read.csv("Female_inmates.csv")
+```
+
+## Keywords
+BIAS BEHIND BARS, FREQUENTIST LOGISTIC REGRESSION, RACIAL BIAS, THE GLOBE AND MAIL
+
+## Abstract
+
+Fairness and justice are the principles law enforcement was intended to center around, with every individual receiving judgement regardless of ethnicity and race. Therefore, Correctional Service Canada should assess inmates’ security levels, reintegration scores, and risk without accounting for their race. The Globe and Mail conducted a study investigating the CSS’s assessment system for racial bias and in this paper I attempt to reproduce their study using frequentist logistic regression models. My results confirm The Globe and Mail’s conclusion with black and indigenous inmates receiving higher security levels while white individuals are more likely to reoffend when taking reintegration scores into account. 
+
+## Introduction
+
+Recently law enforcement has come under fire, accused of being impartial towards people who have dark skin tones. Black Lives Matter protests have sparked mainly across North America from individuals that believe they are oppressed by law enforcement and others that share their sentiment. In these times The Globe and Mail article Bias Behind Bars (Cardoso 2020) contains critical information related to the subject matter of these protests. The Globe and Mail was concerned about the tests used to determine a prisoner’s risk assessment score and their security level as in 2018 the Supreme Court ruled Correctional Service Canada (CSS) tests could not be confirmed to eliminate cultural bias. The article written conducts statistical tests using a dataset obtained from CSS to determine if there is a bias in assessment of prisoners based on their ethnicity. Specifically, The Globe and Mail looks for a significant relationship between ethnicity, a prisoner’s risk assessment score, the security level they are assigned, and if they reoffend. The Globe and Mail found significant relationships between a prisoner’s ethnicity and every other variable they examined.
+
+In this paper I set out to replicate the results obtained in The Globe and Mail’s article. I obtained the dataset from the link provided in the article and cleaned the data to match their methodology post. Once that was finished I created six logistic regression models from the cleaned dataset. Regression is used in statistics to determine if a relationship exists between two variables and logistic regression is used when the outcome you want to relate variables to is binary, meaning there are only two results. The models I made related the same variable as The Globe and Mail’s models they used to determine their results. There were three models, the first one relating ethnicity to a prisoner’s risk assessment score, the second relating ethnicity to their security level, and the third relating ethnicity and risk assessment score to whether they reoffended or not. The three models made were separated based on gender resulting in six models in total. Primarily I analyzed the male models to match The Globe and Mail article and found that indigenous and black inmates were given higher security levels than white prisoners. This is in contrast to white individuals having a higher rate of reoffending than the other two groups when reintegration score is taken into account.
+
+In this post we will first look at the dataset given by The Globe and Mail and look for patterns in the data that hint at relationships that are elucidated by the models built. We will then explore how and why the models were chosen and any variable transformation needed to create them. With our models built we will look at our results and explain their context and why they are important to the CSC’s judgement process. Finally, any weaknesses in this post will be addressed and future studies that build off these results will be speculated on.
+
+## Data
+
+The dataset used in this paper is from Correctional Service Canada and can be obtained through a link on the Globe and Mail article Bias Behind Bars. The dataset contains information on every prisoner from 2012-2018 that has a minimum of a two year sentence. There are 744958 entries with 25 variables and 50116 individuals listed. With every new two year or longer sentence, the CSC first adds the new prisoner to their database which contains their psychological profile, their risk assessment, and any other information pertinent to their identity and risk. Since the database contains almost every prisoner’s information from the years of 2012-2018 it can be considered a census for the prison population, excluding prisoners that served a sentence less than two years. 
+
+Initially the dataset contained 31 different ethnicities that were self identified, however matching The Globe and Mail article I grouped those into five categories: white, black, indigenous, latino, and other. I will be focused mainly on comparing the white, black, and indigenous categories as those were the only results reported in the article. After grouping ethnicities a pattern appears, showing increased numbers of Black and Indigenous prisoners compared to Canada’s population.
+```{r}
+The_Globe_and_Mail_CSC_OMS_2012_2018_20201022235635_clean %>% 
+  count(Race_clean) %>% 
+  mutate(Percentage = n / nrow(The_Globe_and_Mail_CSC_OMS_2012_2018_20201022235635_clean)) ->
+  The_Globe_and_Mail_CSC_OMS_2012_2018_20201022235635_clean1
+ggplot(The_Globe_and_Mail_CSC_OMS_2012_2018_20201022235635_clean1, 
+       aes(x = Race_clean, y = Percentage)) + geom_bar(stat = "identity") + labs(x = "Race", y= "Percentage", title= "Figure 1. Proportion of Prisoners by Race")
+```
+
+Figure 1 showcases the prisoner population is roughly made up of 8% black, 25% indigenous, 2% latino, 5% other, and 60% white individuals. However, as noted by The Globe and Mail Statistics Canada reports Canada’s population in 2016 as roughly 3.5% black, 4.8% indigenous, and 72.9% white individuals. This warranted further investigation into the possibility law enforcement biases against black and indigenous groups.
+
+To reveal any patterns in the assessment of prisoners and potential racial bias I graphed the proportion of prisoners given different risk assessments and security levels grouped by their race. The risk assessments and security levels had three different values: low, medium, and high for risk assessment; and minimum, medium, and maximum for security levels. 
+```{r}
+Freq <- The_Globe_and_Mail_CSC_OMS_2012_2018_20201022235635_clean %>% group_by(Race_clean, OFFENDER.SECURITY.LEVEL) %>% 
+  summarise(Freq=n())
+Freq <- na.omit(Freq)
+Freq$Race_total <- c(49311, 49311, 49311, 145354, 145354, 145354, 6540, 6540, 6540, 34805, 34805, 34805, 451242, 451242, 451242)
+Freq %>%
+  mutate(Percentage1 = Freq / Race_total) -> Freq1
+ggplot(Freq1, aes(fill=`OFFENDER.SECURITY.LEVEL`, y=Percentage1, x=Race_clean)) + 
+  geom_bar(position="dodge", stat="identity") + labs(x="Race",
+                                                     y="Percentage",
+                                                     title="Figure 2.1. Offender Security Level Proportions by Race")
+```
+
+Figure 2.1 showcases that a higher percentage of black and indigenous individuals are given the maximum security level than white individuals, indicating a possible racial bias in the tests given to determine security level.
+```{r}
+Freq3 <- The_Globe_and_Mail_CSC_OMS_2012_2018_20201022235635_clean %>% group_by(Race_clean, REINTEGRATION.POTENTIAL) %>% 
+  summarise(Freq=n())
+Freq4 <- na.omit(Freq3)
+Freq4$Race_total <- c(49300, 49300, 49300, 145269, 145269, 145269, 6538, 6538, 6538, 34801, 34801, 34801, 451024, 451024, 451024)
+Freq4 %>%
+  mutate(Percentage1 = Freq / Race_total) -> Freq5
+ggplot(Freq5, aes(fill=REINTEGRATION.POTENTIAL, y=Percentage1, x=Race_clean)) + 
+  geom_bar(position="dodge", stat="identity") + labs(x="Race",
+                                                  y="Percentage",
+                                                  title="Figure 2.2. Reintegration Score Proportions by Race")
+```
+
+
+Figure 2.2 presents a curious representation of the groupings compared to figure 2.1. As expected a lower percentage of indigenous individuals are given a high reintegration score compared to white individuals, however a higher percentage of black individuals are given a high score. This might be explained due to indigenous and female prisoners given different tests than other prisoners to determine their score.
+
+The variables graphed matched the article’s focal point for the basis of their models. When visualized they represent a catalyst to explore a statistically significant relationship between race and prisoner assessment to link the CSC with racial prejudice. 
+
+## Model
+
+In total six models were constructed to match the Globe and Mail article. These models used logistic regression as it was the most suitable to represent the relationship between the variables included. Logistic regression is used when the dependent variable—or in simpler terms, the variable influenced by the other variables in the model—is binary in nature, meaning there are two outcomes. The first model used race as an independent variable with offender security level as the dependent. Security level was transformed to be a binary variable by changing minimum and medium to 0 and maximum as 1. The second model used race again as an independent variable and reintegration level as the dependent. Once again reintegration level was changed in the same way as security level to be binary. The third model compared race and reintegration score as independent variables to static risk as dependent. In this third model static risk is used as a proxy for if a prisoner will reoffend or not as it includes past sentences in its evaluation. With static risk having the same values as reintegration level it was transformed in the same way to be binary. These three models were separated by gender to create six models in total.
+
+Other types of regression models were unsuited to relate the variables in question. Linear modelling could not be used here since it requires the dependent variable to be continuous—meaning the values are infinite in possibility—or categorical. A bayesian approach is also unsuitable as there is no informative prior distribution to be used to model the data. Only a uniform distribution could be presumed, but that would provide no advantage in building the model. That distribution assumes all variables are equally related to the independent variable. Therefore, frequentist logistic regression was used to model the relationships between the variables. Mathematically the models take the form of:
+	
+$$log(\frac{p}{1 - p}) = \beta_0 + \beta_1x_1 + \beta_2x_2 + ... + \beta_kx_k$$
+
+where p represents the probability of the result being 1. In the first model this would mean the prisoner has a maximum security level, in the second model they would have a high reintegration score, and in the third model they would reoffend. The betas in the equation are coefficients that represent how the independent variables influence the probability. Some of the variables themselves are correlated like offender security level and reintegration scores, however these are used in separate models as independent variables so they do not interfere with the validity of the model.
+
+Regarding model diagnostics and the assumptions made for these variables to be modelled with logistic regression, each of the assumptions are verified. To use a logistic model the first assumption is the variables are linearly related. However, due to the model not using continuous values this assumption can be ignored. Second there are no influential values or outliers once again due to not having continuous variables. Finally multicollinearity was addressed previously, but I will expand on the assumption. Multicollinearity refers to when the independent variables are correlated, which will invalidate the statistical significance of a variable. However, the first two models only contain race as a variable. The third model does have multicollinearity though if the second model shows a significantly significant relationship established between race and reintegration level.
+
+The models were fit using built-in functions of R. 
+
+## Results
+
+```{r}
+Male_Security_Level_Model <- readPNG("Male Security Level Model.png")
+plot.new()
+rasterImage(Male_Security_Level_Model,0,0,1,1)
+```
+
+
+The output above represent the first model made for male inmates relating race and security level. We are interested mainly in the intercept, race_rank2, and race_rank3 that respectively show the beta values for being white, black, and indigenous. The results are as expected with being white having a negative effect on security level and being indigenous or black increasing the level of security. The p-values which are the probability the results are due to chance are extremely close to zero, showing the beta values are statistically significant.
+
+```{r}
+Female_Security_Level_Model <- readPNG("Female Security Level Model.png")
+plot.new()
+rasterImage(Female_Security_Level_Model,0,0,1,1)
+```
+
+The results for the same model for female inmates reveal the same relationships, however the difference between the three race groups that are being prioritized in this paper are amplified with this model.
+
+```{r}
+Male_Reintegration_Potential_Model <- readPNG("Male Reintegration Potential Model.png")
+plot.new()
+rasterImage(Male_Reintegration_Potential_Model,0,0,1,1)
+```
+
+The model shows that being white or indigenous compared to being black lowers your reintegration score. Viewing the p-values shows these results are also statistically significant.
+
+```{r}
+Female_Reintegration_Potential_Model <- readPNG("Female Reintegration Potential Model.png")
+plot.new()
+rasterImage(Female_Reintegration_Potential_Model,0,0,1,1)
+```
+
+The model mimics its male counterpart, although the relationship between the different races and reintegration potential vary slightly. 
+
+```{r}
+Male_Static_Risk_Model <- readPNG("Male Static Risk Model.png")
+plot.new()
+rasterImage(Male_Static_Risk_Model,0,0,1,1)
+```
+
+The model shows being white is highly related to reoffending, while indigenous tend to reoffend less than other races while black individuals skew in the other direction. Reintegration scores relate to reoffending as expected with a higher score negatively affecting the probability of reoffending.
+
+```{r}
+Female_Static_Risk_Model <- readPNG("Female Static Risk Model.png")
+plot.new()
+rasterImage(Female_Static_Risk_Model,0,0,1,1)
+```
+
+The model showcases a stark contrast to its male counterpart with white, indigenous, and black individuals increasing the probability of reoffending compared to the other racial groups. White female inmates are still more likely to reoffend compared to black and indigenous females however. The results do mimic the male model in the reintegration score relation which is expected.
+
+## Discussion
+
+Overall the results I obtained match The Globe and Mail’s results in their article. The only differences between the two are with the last model with black male inmates less likely to reoffend than white inmates. However, the third model was proving if reintegration scores are accounted for then the different races shouldn’t affect the probability of reoffending if the scores were not dependent on race. The third model does exhibit however, that white individuals are far more likely to end up with inflated reintegration scores due to them reoffending at a much higher rate to other races given their score. 
+
+Combining the results of all three models shows that black and indigenous prisoners are unfairly assessed compared to white groups. They are assigned higher security levels, and indigenous people are assigned lower reintegration scores than the other two groups. This paper shows that the tests given to inmates need to be examined for racial bias. Mentioned previously, indigenous and female inmates are given different assessment tests than other groups to determine their reintegration scores. While all other prisoners are given the Custody Rating	Scale, the Static Factors Assessment and the Statistical Information on Recidivism	scale, indigenous and female inmates are given the Dynamic Factors Identification and	Analysis tests in exchange for the Recidivism scale. This test could account for the difference between indigenous and white inmates for reintegration score, but still does not account for security level or the difference between female inmates with reintegration score. The models themselves are accurate to the real world population as well, since they use the entire prison population excluding prisoners with under a two year sentence.
+
+The Globe and Mail ignored the other race groups, however there are some curious results for those groups as well. Male latino inmates were likely to receive lower security levels than other groups, however female latino inmates were highly likely to receive higher security levels. This directly contradicts the third model’s results that male latino inmates were more likely to reoffend while females were less likely by a large margin. These results suggest there is also a gender bias in the assessment of prisoners. Since the males and females had similar results except for this discrepancy here this might be indicative of a selective racial gender bias. 
+
+In conclusion the tests given to inmates to assess their risks, security level, and reintegration scores need to be thoroughly rehauled. The results found by The Globe and Mail were probably a small part of a large-scale analysis done to arrive at the 2018 Supreme Court ruling for CSC to eliminate racial bias in their tests.
+	
+## Weaknesses
+
+The Globe and Mail uses an additional variable in their analysis by converting prisoner’s crimes into a severity score using Statistics	Canada’s crime severity index weights. However, I could not find where they used this variable in their analysis. Additionally, to construct this variable I would have to write code to change 700 unique charges that I would need to comb through the database to find. Related to this weakness is that I did not remove the same prisoners, so some appear in the database multiple times. This can be looked at in the view of influential points, however their risk assessment changes based on their previous crimes so they do not contribute the same values, inflating them.
+  
+Another weakness of the paper involves using static risk as a predictor for if a prisoner will reoffend in the future. This variable is based on an inmate’s past encounters with law enforcement and is high if the prisoner is a repeat offender. This may be predictive, but repeat offenders cannot be assumed to eventually break the law again. Using static risk as a predictor assumes that anyone with a risk score of high will reoffend when getting out of jail. As well in the same vein as the previous weakness, prisoners with lifetime sentences were not removed from this model as that would involve looking through more than 400000 entries to eliminate a minor bias. Prisoners with lifetime sentences can reoffend in jail however, so leaving them in does not invalidate the model’s predictive ability. 
+  
+## Future Work
+
+Avenues for future work should focus primarily on the tests CSC is giving to inmates. To find out if specific questions are racially biased they should have white black, and indigenous groups answer the questions and see if any specific questions are contributing to a worse score in particular racial groups. CSC should be able to design a test in conjunction with statistical studies to create an impartial assessment system for their prisoners. 
+
+To build off the third model in this study, an observational study that follows inmates based on their racial groups and reintegration scores should be conducted. That study would be able to definitively prove if the reintegration scores of certain groups are non predictive of their behaviour and biased. If the study finds that prisoners regardless of their race, with high reintegration scores keep clean while those with low scores reoffend then the judgements are accurate without a racial bias. However, if the opposite is true then the system is proved flawed.
+
+## Appendix
+
+The code, scripts, and RMarkdown file in this report's analysis can also be found at the following link: https://github.com/Jonathan-Tillmann/STA304-Final-Project.git
+
+
+
+
+## References
+
+Cardoso, T. (2020). “Bias behind bars: A Globe investigation finds a prison system stacked against Black and Indigenous inmates.” The Globe and Mail. Retrieved from: https://www.theglobeandmail.com/canada/article-investigation-racial-bias-in-canadian-prison-risk-assessments/ 
+
+Cardoso, T. (2020). “How we did	it: How The Globe uncovered systemic bias in prisoners' risk assessments” The Globe and Mail. Retrieved from: https://www.theglobeandmail.com/canada/article-investigation-racial-bias-in-canadian-prisons-methodology/ 
+
+Hao Zhu (2020). kableExtra: Construct Complex Table with 'kable' and Pipe Syntax. R package version 1.3.1. Retrieved from: https://CRAN.R-project.org/package=kableExtra.
+
+JJ Allaire et al. (2020). rmarkdown: Dynamic Documents for R. R package version 2.3. Retrieved from:   https://rmarkdown.rstudio.com.
+
+Long JA (2020). _jtools: Analysis and Presentation of Social Scientific Data_. R package version 2.1.0. Retrieved from: https://cran.r-project.org/package=jtools>. 
+
+Malakieh, J. (2018). “Adult and youth correctional statistics in Canada, 2016/2017.” Statistics Canada. Retrieved from: https://www150.statcan.gc.ca/n1/pub/85-002-x/2018001/article/54972-eng.htm 
+
+R Core Team. (2020). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. Retrieved from: https://www.R-project.org/.
+
+Wickham et al. (2020). dplyr: A Grammar of Data Manipulation. R package version 1.0.2. Retrieved from: https://CRAN.R-project.org/package=dplyr 
+
+Wickham et al. (2019). Welcome to the tidyverse. Journal of Open Source Software, 4(43), 1686. Retrieved from: https://doi.org/10.21105/joss.01686.
+
+Wickham, H. (2016). ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag. Retrieved from: https://ggplot2.tidyverse.org 
+
+Yihui Xie (2020). knitr: A General-Purpose Package for Dynamic Report Generation in R. R package version 1.30.
+
+
